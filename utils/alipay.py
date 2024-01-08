@@ -1,14 +1,16 @@
 """
 https://www.cnblogs.com/xingxia/p/alipay_trade_page.html
 """
+import json
+from base64 import decodebytes, encodebytes
 # pip install pycryptodome
 from datetime import datetime
+from urllib.parse import quote_plus, urlparse, parse_qs
+
+from Crypto.Hash import SHA256
 from Crypto.PublicKey import RSA
 from Crypto.Signature import PKCS1_v1_5
-from Crypto.Hash import SHA256
-from urllib.parse import quote_plus
-from base64 import decodebytes, encodebytes
-import json
+from django.conf import settings
 
 
 class AliPay(object):
@@ -16,7 +18,7 @@ class AliPay(object):
     支付宝支付接口(PC端支付接口)
     """
 
-    def __init__(self, appid, notify_url, app_private_key_path, alipay_public_key_path, return_url, debug=True):
+    def __init__(self, appid, notify_url, app_private_key_path, alipay_public_key_path, return_url):
         self.appid = appid
         self.notify_url = notify_url
         self.return_url = return_url
@@ -29,9 +31,9 @@ class AliPay(object):
         with open(self.alipay_public_key_path) as fp:
             self.alipay_public_key = RSA.importKey(fp.read())
 
-        if debug is True:
-            # self.__gateway = "https://openapi.alipaydev.com/gateway.do"
-            self.__gateway = "https://openapi-sandbox.dl.alipaydev.com/gateway.do"  # 沙箱环境网关
+        # if debug is True:
+        # self.__gateway = "https://openapi.alipaydev.com/gateway.do"
+        # self.__gateway = "https://openapi-sandbox.dl.alipaydev.com/gateway.do"  # 沙箱环境网关
 
     def direct_pay(self, subject, out_trade_no, total_amount):
         """支付相关 将构造的url参数返回便于拼接在支付宝网关地址后面 """
@@ -149,3 +151,47 @@ class AliPay(object):
         if signer.verify(digest, decodebytes(signature.encode("utf8"))):
             return True
         return False
+
+
+if __name__ == "__main__":
+    # 测试用
+    import os
+    import django
+
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'aliPayV2.settings')
+    django.setup()
+
+    return_url = settings.ALI_RETURN_URL
+    # return_url = "http://127.0.0.1:8000/pay/notify/?charset=utf-8&out_trade_no=20170202sss&method=alipay.trade.page.pay.return&total_amount=100.00&sign=CTQaviXKFfgeP1lBhFXPM3KZ1%2FPnHLHmYO2Y3Hn0bAicNS9Zwb7UwQc53daX2YO87OSTklxhgULbjxLK8TcnoXAjla0pxLBYvmDAzK1115waU6xWpHC1HhPxPEkZY8CUSs9ixJtcdX1v1AIfJqTm2WAK5EyCFC9fryzuKNMw8PVlTOfoUx9E46rmZO%2BmzqfVWgu%2Fi0QY0PAXNpSn%2F7Cszxhn%2BabbqdXWzEMw5lNWcJOJ9J69LzgAU%2FwnJPaYu3klabH7Fg49Md5hJk%2FTihWyq5M3JKT9EDXfwGgqH8P3FQknmWv%2FBkXDrFDgZzYZcYabnjietgnn%2BGIIEYDddPVNZA%3D%3D&trade_no=2024010822001461620501836156&auth_app_id=9021000133666730&version=1.0&app_id=9021000133666730&sign_type=RSA2&seller_id=2088721026898092&timestamp=2024-01-08+10%3A46%3A56"
+
+    o = urlparse(return_url)
+    query = parse_qs(o.query)
+    processed_query = {}
+
+    ali_sign = ''
+    if "sign" in query:
+        ali_sign = query.pop("sign")[0]
+
+    alipay = AliPay(
+        appid=settings.ALI_APPID,
+        notify_url=settings.ALI_RETURN_URL,
+        app_private_key_path=settings.ALI_APP_PRI_KEY_PATH,
+        alipay_public_key_path=settings.ALI_PUB_KEY_PATH,  # 支付宝的公钥，验证支付宝回传消息使用，不是你自己的公钥,
+        return_url=settings.ALI_RETURN_URL
+    )
+
+    for key, value in query.items():
+        processed_query[key] = value[0]
+
+    print(alipay.verify(processed_query, ali_sign))
+
+    url = alipay.direct_pay(
+        subject="测试订单2",
+        out_trade_no="20170202sss",
+        total_amount=100
+    )
+
+    # re_url = settings.ALI_GATEWAY.format(data=url)
+    re_url = settings.ALI_GATEWAY + '?{}'.format(url)
+
+    print(re_url)

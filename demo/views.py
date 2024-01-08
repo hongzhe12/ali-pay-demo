@@ -29,19 +29,20 @@ def pay(request):
 
     # 构造跳转的url参数
     query_params = ali_pay.direct_pay(
-        subject="这是订单标题",
+        subject="Iphone 15 Pro Max",
         out_trade_no=uid('qwe'),  # 支付的订单号
-        total_amount=100.00  # 支付金额
+        total_amount=15000.00  # 支付金额
     )
     # settings.ALI_GATEWAY 支付宝沙箱网关地址 ; query_params 构造的参数
     pay_url = "{}?{}".format(settings.ALI_GATEWAY, query_params)
+
     return redirect(pay_url)  # 跳转到支付宝,出现扫码支付的二维码
 
 
 def pay_notify(request):
     """ 支付成功之后触发的URL """
     ali_pay = AliPay(
-        appid=settings.ALI_APPID,  # "2016102400754054"
+        appid=settings.ALI_APPID,
         notify_url=settings.ALI_NOTIFY_URL,  # 通知URL：POST     支付成功后 - 发送的POST订单验证消息（异步）
         return_url=settings.ALI_RETURN_URL,  # 支付完成之后，跳转到这个地址: GET     支付成功后 - 重定向自己的网站
         app_private_key_path=settings.ALI_APP_PRI_KEY_PATH,
@@ -50,16 +51,25 @@ def pay_notify(request):
 
     # return_url
     if request.method == 'GET':
+        # get 获取的同步通知需 url_decode 处理，不处理会导致验签失败
+
         # 只做跳转,判断是否支付成功了,不做订单的状态更新。
         # 支付宝会将订单号返回获取订单ID,然后根据订单ID做状态更新 + 认证.
         # 支付宝公钥对支付给我返回的数据 request.GET 进行检查,通过则表示这是支付宝返还的接口.
+        params = {}
+        for key, value in request.GET.items():
+            params[key] = value
+
         params = request.GET.dict()
-        # print("params:", params)
+
+        print("params:", params)
         sign = params.pop('sign', None)
         status = ali_pay.verify(params, sign)
         if status:
             return HttpResponse('支付完成')
+
         return HttpResponse('支付失败')
+
     # notify_url
     else:
         body_str = request.body.decode('utf-8')
